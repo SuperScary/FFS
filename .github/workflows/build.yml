@@ -98,7 +98,7 @@ jobs:
           copy "build\Release\FFS${{ matrix.executable_extension }}" "artifacts\FFS${{ matrix.executable_extension }}"
           # Include examples and documentation
           xcopy examples artifacts\examples /E /I
-          if exist README.md copy README.md artifacts\
+          if (exist README.md) copy README.md artifacts\
           # Create version info file
           echo FFS ${{ steps.version.outputs.version }} > artifacts\VERSION.txt
           echo Built: %DATE% %TIME% >> artifacts\VERSION.txt

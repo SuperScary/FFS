@@ -77,7 +77,13 @@ jobs:
       - name: Build
         run: cmake --build build --config Release
 
-      - name: Create artifact directory
+      - name: Create artifact directory (Windows)
+        if: runner.os == 'Windows'
+        run: New-Item -ItemType Directory -Path "artifacts" -Force
+        shell: powershell
+
+      - name: Create artifact directory (Linux/macOS)
+        if: runner.os != 'Windows'
         run: mkdir -p artifacts
 
       - name: Copy executable (Linux/macOS)
@@ -95,20 +101,22 @@ jobs:
       - name: Copy executable (Windows)
         if: runner.os == 'Windows'
         run: |
-          copy "build\Release\FFS${{ matrix.executable_extension }}" "artifacts\FFS${{ matrix.executable_extension }}"
+          Copy-Item "build\Release\FFS${{ matrix.executable_extension }}" "artifacts\FFS${{ matrix.executable_extension }}"
           # Include examples and documentation
-          xcopy examples artifacts\examples /E /I
-          if (exist README.md) copy README.md artifacts\
+          Copy-Item -Recurse "examples" "artifacts\examples"
+          if (Test-Path "README.md") { Copy-Item "README.md" "artifacts\" }
           # Create version info file
-          echo FFS ${{ steps.version.outputs.version }} > artifacts\VERSION.txt
-          echo Built: %DATE% %TIME% >> artifacts\VERSION.txt
-          echo Commit: ${{ github.sha }} >> artifacts\VERSION.txt
+          "FFS ${{ steps.version.outputs.version }}" | Out-File -FilePath "artifacts\VERSION.txt" -Encoding utf8
+          "Built: $(Get-Date)" | Out-File -FilePath "artifacts\VERSION.txt" -Append -Encoding utf8
+          "Commit: ${{ github.sha }}" | Out-File -FilePath "artifacts\VERSION.txt" -Append -Encoding utf8
+        shell: powershell
 
       - name: Create release package (Windows)
         if: runner.os == 'Windows'
         run: |
-          cd artifacts
-          powershell Compress-Archive -Path * -DestinationPath ../${{ matrix.artifact_name }}-${{ steps.version.outputs.version }}.zip
+          Set-Location artifacts
+          Compress-Archive -Path * -DestinationPath "..\${{ matrix.artifact_name }}-${{ steps.version.outputs.version }}.zip"
+        shell: powershell
 
       - name: Create release package (Linux/macOS)
         if: runner.os != 'Windows'

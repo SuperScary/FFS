@@ -3,10 +3,14 @@ name: Build FFS
 on:
   push:
     branches: [main, develop]
+    tags: ["v*"]
   pull_request:
     branches: [main]
   release:
     types: [published]
+  schedule:
+    # Run nightly builds at 2 AM UTC
+    - cron: "0 2 * * *"
 
 jobs:
   build:
@@ -18,16 +22,46 @@ jobs:
           - os: ubuntu-latest
             artifact_name: ffs-linux
             executable_extension: ""
+            archive_format: "tar.gz"
           - os: windows-latest
             artifact_name: ffs-windows
             executable_extension: ".exe"
+            archive_format: "zip"
           - os: macos-latest
             artifact_name: ffs-macos
             executable_extension: ""
+            archive_format: "tar.gz"
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history for version info
+
+      - name: Generate version info
+        id: version
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            # Tagged release
+            VERSION=${GITHUB_REF#refs/tags/}
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "is_release=true" >> $GITHUB_OUTPUT
+          elif [[ $GITHUB_REF == refs/heads/main ]]; then
+            # Main branch - use commit info
+            SHORT_SHA=$(git rev-parse --short HEAD)
+            DATE=$(date +%Y%m%d)
+            VERSION="nightly-$DATE-$SHORT_SHA"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "is_release=false" >> $GITHUB_OUTPUT
+          else
+            # Feature branch
+            BRANCH=${GITHUB_REF#refs/heads/}
+            SHORT_SHA=$(git rev-parse --short HEAD)
+            VERSION="$BRANCH-$SHORT_SHA"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "is_release=false" >> $GITHUB_OUTPUT
+          fi
+        shell: bash
 
       - name: Set up CMake
         uses: lukka/get-cmake@latest
@@ -50,56 +84,124 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           cp build/FFS${{ matrix.executable_extension }} artifacts/FFS${{ matrix.executable_extension }}
-          # Include examples
+          # Include examples and documentation
           cp -r examples artifacts/
+          cp README.md artifacts/ 2>/dev/null || echo "README.md not found"
+          # Create version info file
+          echo "FFS ${{ steps.version.outputs.version }}" > artifacts/VERSION.txt
+          echo "Built: $(date)" >> artifacts/VERSION.txt
+          echo "Commit: $GITHUB_SHA" >> artifacts/VERSION.txt
 
       - name: Copy executable (Windows)
         if: runner.os == 'Windows'
         run: |
           copy "build\Release\FFS${{ matrix.executable_extension }}" "artifacts\FFS${{ matrix.executable_extension }}"
-          # Include examples
+          # Include examples and documentation
           xcopy examples artifacts\examples /E /I
+          if exist README.md copy README.md artifacts\
+          # Create version info file
+          echo FFS ${{ steps.version.outputs.version }} > artifacts\VERSION.txt
+          echo Built: %DATE% %TIME% >> artifacts\VERSION.txt
+          echo Commit: ${{ github.sha }} >> artifacts\VERSION.txt
 
-      - name: Upload build artifacts
+      - name: Create release package (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cd artifacts
+          powershell Compress-Archive -Path * -DestinationPath ../${{ matrix.artifact_name }}-${{ steps.version.outputs.version }}.zip
+
+      - name: Create release package (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          cd artifacts
+          tar -czf ../${{ matrix.artifact_name }}-${{ steps.version.outputs.version }}.tar.gz .
+
+      - name: Upload build artifacts (for CI)
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
+          name: ${{ matrix.artifact_name }}-${{ steps.version.outputs.version }}
           path: artifacts/
           retention-days: 30
 
-  release:
+      - name: Upload release packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.artifact_name }}-${{ steps.version.outputs.version }}
+          path: ${{ matrix.artifact_name }}-${{ steps.version.outputs.version }}.*
+          retention-days: 90
+
+  auto-release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate version info
+        id: version
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "is_tag=true" >> $GITHUB_OUTPUT
+            echo "release_name=FFS $VERSION" >> $GITHUB_OUTPUT
+          else
+            SHORT_SHA=$(git rev-parse --short HEAD)
+            DATE=$(date +%Y%m%d)
+            VERSION="nightly-$DATE-$SHORT_SHA"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "is_tag=false" >> $GITHUB_OUTPUT
+            echo "release_name=FFS Nightly Build $DATE" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download all release packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Create/Update Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: ${{ steps.version.outputs.release_name }}
+          body: |
+            ${{ steps.version.outputs.is_tag == 'true' && 'Release' || 'Nightly build' }} of FFS
+
+            **Changes:**
+            ${{ github.event.head_commit.message }}
+
+            **Downloads:**
+            - `ffs-windows-*.zip` - Windows executable
+            - `ffs-linux-*.tar.gz` - Linux executable  
+            - `ffs-macos-*.tar.gz` - macOS executable
+
+            Each package includes the FFS executable, example files, and documentation.
+
+            **Commit:** ${{ github.sha }}
+            **Built:** ${{ github.run_number }}
+          files: release-artifacts/*
+          prerelease: ${{ steps.version.outputs.is_tag != 'true' }}
+          make_latest: ${{ steps.version.outputs.is_tag == 'true' }}
+
+  # Keep the manual release job for GitHub releases UI
+  manual-release:
     needs: build
     runs-on: ubuntu-latest
     if: github.event_name == 'release'
     steps:
-      - name: Download all artifacts
+      - name: Download all release packages
         uses: actions/download-artifact@v4
         with:
+          pattern: release-*
           path: release-artifacts
+          merge-multiple: true
 
-      - name: Create release packages
-        run: |
-          cd release-artifacts
-
-          # Create zip for Windows
-          cd ffs-windows
-          zip -r ../ffs-windows-${{ github.ref_name }}.zip .
-          cd ..
-
-          # Create tar.gz for Linux
-          cd ffs-linux
-          tar -czf ../ffs-linux-${{ github.ref_name }}.tar.gz .
-          cd ..
-
-          # Create tar.gz for macOS
-          cd ffs-macos
-          tar -czf ../ffs-macos-${{ github.ref_name }}.tar.gz .
-          cd ..
-
-      - name: Upload release assets
+      - name: Upload release assets to existing release
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-            release-artifacts/ffs-windows-${{ github.ref_name }}.zip
-            release-artifacts/ffs-linux-${{ github.ref_name }}.tar.gz
-            release-artifacts/ffs-macos-${{ github.ref_name }}.tar.gz
+          files: release-artifacts/*

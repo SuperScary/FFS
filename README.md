@@ -1,5 +1,7 @@
 # FFS — *For Fuck’s Sake*
 
+> _Why Not?_ -SuperScary (circa 2025)
+
 A spiritual successor to [Brainfuck](https://esolangs.org/wiki/Brainfuck), designed for when you want the **raw power of direct memory fuckery** but with a little less masochism.
 
 FFS keeps the *"one-character op"* vibe, but cleans up the parts that made you scream in BF: mismatched loops, undefined EOF, no debug tools, no repeat counts.

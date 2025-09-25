@@ -1,0 +1,105 @@
+name: Build FFS
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            artifact_name: ffs-linux
+            executable_extension: ""
+          - os: windows-latest
+            artifact_name: ffs-windows
+            executable_extension: ".exe"
+          - os: macos-latest
+            artifact_name: ffs-macos
+            executable_extension: ""
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up CMake
+        uses: lukka/get-cmake@latest
+
+      - name: Configure CMake (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Configure CMake (Windows)
+        if: runner.os == 'Windows'
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Create artifact directory
+        run: mkdir -p artifacts
+
+      - name: Copy executable (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          cp build/FFS${{ matrix.executable_extension }} artifacts/FFS${{ matrix.executable_extension }}
+          # Include examples
+          cp -r examples artifacts/
+
+      - name: Copy executable (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          copy "build\Release\FFS${{ matrix.executable_extension }}" "artifacts\FFS${{ matrix.executable_extension }}"
+          # Include examples
+          xcopy examples artifacts\examples /E /I
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: artifacts/
+          retention-days: 30
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Create release packages
+        run: |
+          cd release-artifacts
+
+          # Create zip for Windows
+          cd ffs-windows
+          zip -r ../ffs-windows-${{ github.ref_name }}.zip .
+          cd ..
+
+          # Create tar.gz for Linux
+          cd ffs-linux
+          tar -czf ../ffs-linux-${{ github.ref_name }}.tar.gz .
+          cd ..
+
+          # Create tar.gz for macOS
+          cd ffs-macos
+          tar -czf ../ffs-macos-${{ github.ref_name }}.tar.gz .
+          cd ..
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            release-artifacts/ffs-windows-${{ github.ref_name }}.zip
+            release-artifacts/ffs-linux-${{ github.ref_name }}.tar.gz
+            release-artifacts/ffs-macos-${{ github.ref_name }}.tar.gz

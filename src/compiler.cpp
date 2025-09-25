@@ -47,15 +47,27 @@ namespace {
     }
 
     int parse_number (const std::string &s) {
-        if (s.rfind("0x", 0) == 0 || s.rfind("0X", 0) == 0) {
-            return static_cast<int>(std::stoul(s.substr(2), nullptr, 16) & 0xFFu);
-        }
+        try {
+            unsigned long val;
+            if (s.rfind("0x", 0) == 0 || s.rfind("0X", 0) == 0) {
+                if (s.length() <= 2)
+                    return 0;
+                val = std::stoul(s.substr(2), nullptr, 16);
+            } else if (s.rfind('b', 0) == 0 || s.rfind('B', 0) == 0) {
+                if (s.length() <= 1)
+                    return 0;
+                val = std::stoul(s.substr(1), nullptr, 2);
+            } else {
+                val = std::stoul(s, nullptr, 10);
+            }
 
-        if (s.rfind('b', 0) == 0 || s.rfind('B', 0) == 0) {
-            return static_cast<int>(std::stoul(s.substr(1), nullptr, 2) & 0xFFu);
+            if (val > 255) {
+                val = 255; // Clamp to valid byte range
+            }
+            return static_cast<int>(val);
+        } catch (const std::exception &) {
+            die("invalid number format: " + s);
         }
-
-        return static_cast<int>(std::stoul(s, nullptr, 10) & 0xFFu);
     }
 
     std::vector<Instr> desugar (const std::string &src, int dbgWidth) {

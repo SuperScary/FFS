@@ -30,9 +30,25 @@ int main (int argc, char **argv) {
         if (a == "-f" || a == "--file") {
             file = needVal(a);
         } else if (a == "--cells") {
-            cells = std::stoi(needVal(a));
+            try {
+                int val = std::stoi(needVal(a));
+                if (val < 1 || val > 1000000) {
+                    die("--cells must be between 1 and 1,000,000");
+                }
+                cells = val;
+            } catch (const std::exception &e) {
+                die("invalid value for --cells: " + std::string(e.what()));
+            }
         } else if (a == "--dbg") {
-            dbg = std::stoi(needVal(a));
+            try {
+                int val = std::stoi(needVal(a));
+                if (val < 1 || val > 1000) {
+                    die("--dbg must be between 1 and 1,000");
+                }
+                dbg = val;
+            } catch (const std::exception &e) {
+                die("invalid value for --dbg: " + std::string(e.what()));
+            }
         } else if (a == "--elastic") {
             elastic = true;
         } else if (a == "--strict") {
@@ -69,7 +85,11 @@ int main (int argc, char **argv) {
         if (!fin) {
             die("could not open file: " + file);
         }
-        src = read_all(fin);
+        try {
+            src = read_all(fin);
+        } catch (const std::exception &e) {
+            die("error reading file: " + std::string(e.what()));
+        }
     }
 
     Program prog = compile_src(src, dbg);

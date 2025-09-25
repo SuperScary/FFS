@@ -1,0 +1,53 @@
+# --------------------------------------------
+# Two-digit decimal counter: 00..99 (each on its own line)
+# Cells:
+#  c0 = ones_value
+#  c1 = tens_value
+#  c2 = ones_remaining
+#  c3 = tens_remaining
+#  c4 = tmp (free)
+#  c5 = ascii_zero (48)
+# --------------------------------------------
+
+# Init
+=0          # c0 ones=0
+> =0        # c1 tens=0
+> =0        # c2 ones_remaining (set per outer)
+> =10       # c3 tens_remaining=10
+> =10       # c4 newline='\n'
+> =48       # c5 '0'
+<x5         # back to c0
+
+# --- outer over tens (while c3 != 0) ---
+>x3         # c3
+[@tens
+  <         # c2
+  =10       # ones_remaining=10
+
+  <<        # c0
+  =0        # ones_value=0
+
+  >>        # c2
+  [@ones
+    <       # c1 (tens_value)
+    +x48 . -x48   # print '0'+tens
+
+    <       # c0 (ones_value)
+    +x48 . -x48   # print '0'+ones
+
+    >x4     # move to c4 (newline cell)
+    .       # print '\n'
+    <x4     # back to c0
+
+    +       # ones_value++
+
+    >>      # c2
+    -       # ones_remaining--
+  ]@ones
+
+  <         # c1
+  +         # tens_value++
+
+  >>        # c3
+  -         # tens_remaining--
+]@tens

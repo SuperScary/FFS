@@ -13,8 +13,8 @@ on:
     - cron: "0 2 * * *"
 
 permissions:
-  contents: write  # Required for creating releases
-  actions: read    # Required for downloading artifacts
+  contents: write # Required for creating releases
+  actions: read # Required for downloading artifacts
 
 jobs:
   build:

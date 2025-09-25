@@ -12,6 +12,10 @@ on:
     # Run nightly builds at 2 AM UTC
     - cron: "0 2 * * *"
 
+permissions:
+  contents: write  # Required for creating releases
+  actions: read    # Required for downloading artifacts
+
 jobs:
   build:
     runs-on: ${{ matrix.os }}
@@ -141,7 +145,7 @@ jobs:
   auto-release:
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -194,7 +198,7 @@ jobs:
             **Built:** ${{ github.run_number }}
           files: release-artifacts/*
           prerelease: ${{ steps.version.outputs.is_tag != 'true' }}
-          make_latest: ${{ steps.version.outputs.is_tag == 'true' }}
+          generate_release_notes: true
 
   # Keep the manual release job for GitHub releases UI
   manual-release:

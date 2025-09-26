@@ -16,12 +16,14 @@ add_executable(FFS
         src/util.cpp
         src/compiler.cpp
         src/vm.cpp
+        src/error.cpp
 
         # Headers
         include/compiler.h
         include/program.h
         include/util.h
         include/vm.h
+        include/error.h
 )
 
 target_include_directories(FFS

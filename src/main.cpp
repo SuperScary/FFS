@@ -4,6 +4,7 @@
 #include <string>
 
 #include "compiler.h"
+#include "error.h"
 #include "util.h"
 #include "vm.h"
 #include "version.h"
@@ -23,7 +24,9 @@ int main (int argc, char **argv) {
         std::string a       = argv[i];
         auto        needVal = [&](const std::string &name) {
             if (i + 1 >= argc) {
-                die("missing value for " + name);
+                ffs::ErrorReporter::argumentError(ffs::ErrorCode::MISSING_ARGUMENT_VALUE,
+                                                  "Missing value for " + name,
+                                                  "Provide a value after " + name + ", e.g., " + name + " 100");
             }
             return std::string(argv[++i]);
         };
@@ -33,21 +36,29 @@ int main (int argc, char **argv) {
             try {
                 int val = std::stoi(needVal(a));
                 if (val < 1 || val > 1000000) {
-                    die("--cells must be between 1 and 1,000,000");
+                    ffs::ErrorReporter::argumentError(ffs::ErrorCode::OUT_OF_RANGE,
+                                                      "--cells must be between 1 and 1,000,000",
+                                                      "Try a value like --cells 30000");
                 }
                 cells = val;
             } catch (const std::exception &e) {
-                die("invalid value for --cells: " + std::string(e.what()));
+                ffs::ErrorReporter::argumentError(ffs::ErrorCode::INVALID_ARGUMENT_VALUE,
+                                                  "Invalid value for --cells: " + std::string(e.what()),
+                                                  "Use a numeric value, e.g., --cells 30000");
             }
         } else if (a == "--dbg") {
             try {
                 int val = std::stoi(needVal(a));
                 if (val < 1 || val > 1000) {
-                    die("--dbg must be between 1 and 1,000");
+                    ffs::ErrorReporter::argumentError(ffs::ErrorCode::OUT_OF_RANGE,
+                                                      "--dbg must be between 1 and 1,000",
+                                                      "Try a value like --dbg 8");
                 }
                 dbg = val;
             } catch (const std::exception &e) {
-                die("invalid value for --dbg: " + std::string(e.what()));
+                ffs::ErrorReporter::argumentError(ffs::ErrorCode::INVALID_ARGUMENT_VALUE,
+                                                  "Invalid value for --dbg: " + std::string(e.what()),
+                                                  "Use a numeric value, e.g., --dbg 8");
             }
         } else if (a == "--elastic") {
             elastic = true;
@@ -73,7 +84,9 @@ int main (int argc, char **argv) {
                     << "  -h, --help           Show this help message\n";
             return 0;
         } else {
-            die("unknown flag: " + a);
+            ffs::ErrorReporter::argumentError(ffs::ErrorCode::UNKNOWN_ARGUMENT,
+                                              "Unknown flag: " + a,
+                                              "Use --help to see available options");
         }
     }
 
@@ -83,15 +96,21 @@ int main (int argc, char **argv) {
     } else {
         std::ifstream fin(file, std::ios::binary);
         if (!fin) {
-            die("could not open file: " + file);
+            ffs::ErrorReporter::ioError(ffs::ErrorCode::FILE_NOT_FOUND,
+                                        "Could not open file: " + file,
+                                        file,
+                                        "Check that the file exists and you have permission to read it");
         }
         try {
             src = read_all(fin);
         } catch (const std::exception &e) {
-            die("error reading file: " + std::string(e.what()));
+            ffs::ErrorReporter::ioError(ffs::ErrorCode::FILE_READ_ERROR,
+                                        "Error reading file: " + std::string(e.what()),
+                                        file,
+                                        "Ensure the file is not corrupted and you have read permissions");
         }
     }
 
-    Program prog = compile_src(src, dbg);
+    Program prog = compile_src(src, dbg, file);
     return run(prog, cells, elastic, strict, dbg, trace, stdin, stdout, stderr);
 }
